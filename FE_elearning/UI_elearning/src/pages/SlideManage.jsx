@@ -11,20 +11,23 @@ import {
 import RightSidebar from "../components/ManageSlide/RightSidebar";
 import CreateLectureModal from "../components/Lecture/CreateLectureModal";
 import { useSearchParams } from "react-router-dom";
+import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
 import {
   getSlideById,
   createSlides,
   updateSlides,
+  deleteSlide as deleteSlideService,
 } from "../services/slideService";
 import { useParams, useNavigate } from "react-router-dom";
 
 const SlideManage = () => {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
-  const mode = searchParams.get("mode") || "edit"; // Default to edit mode
+  const mode = searchParams.get("mode") || "edit";
   const navigate = useNavigate();
   const [slides, setSlides] = useState([]);
+  const [deletedSlideIds, setDeletedSlideIds] = useState([]);
   const [currentSlide, setCurrentSlide] = useState(null);
   const [lectureTitle, setLectureTitle] = useState("");
   const [showHTMLModal, setShowHTMLModal] = useState(false);
@@ -154,6 +157,7 @@ const SlideManage = () => {
           createdAt: slide.createdAt,
           slideOrder: slide.slideOrder,
           role: slide.role,
+          isNew: false,
         }));
 
         setSlides(formattedSlides);
@@ -189,9 +193,10 @@ const SlideManage = () => {
 
   const addNewSlide = () => {
     const newSlide = {
-      id: Date.now(), // Sử dụng timestamp để tránh trùng ID
+      id: Date.now(),
       content: "",
       isActive: false,
+      isNew: true,
     };
     setSlides([...slides, newSlide]);
   };
@@ -238,19 +243,35 @@ const SlideManage = () => {
         id: Date.now(),
         content: currentSlideData.content,
         isActive: false,
+        isNew: false,
       };
       setSlides([...slides, newSlide]);
     }
   };
 
-  const deleteSlide = () => {
+  const deleteSlide = async () => {
     if (slides.length > 1) {
-      const filteredSlides = slides.filter(
-        (slide) => slide.id !== currentSlide
-      );
-      setSlides(filteredSlides);
-      if (filteredSlides.length > 0) {
-        setCurrentSlide(filteredSlides[0].id);
+      try {
+        const currentSlideData = slides.find(
+          (slide) => slide.id === currentSlide
+        );
+
+        // Chỉ gọi API xóa nếu slide không phải là slide mới
+        if (currentSlideData && !currentSlideData.isNew) {
+          await deleteSlideService(currentSlide);
+        }
+
+        // Cập nhật UI
+        const filteredSlides = slides.filter(
+          (slide) => slide.id !== currentSlide
+        );
+        setSlides(filteredSlides);
+        if (filteredSlides.length > 0) {
+          setCurrentSlide(filteredSlides[0].id);
+        }
+      } catch (error) {
+        console.error("Error deleting slide:", error);
+        alert("Có lỗi xảy ra khi xóa slide!");
       }
     }
   };
@@ -293,6 +314,7 @@ const SlideManage = () => {
 
       // Format data để gửi lên server
       const slidesData = slides.map((slide, index) => ({
+        id: slide.isNew ? null : slide.id, // Nếu là slide mới thì gửi id là null
         title: slide.title || `Slide ${index + 1}`,
         htmlContent: slide.content,
         slideOrder: index,
@@ -303,26 +325,34 @@ const SlideManage = () => {
       const existingSlides = await getSlideById(id);
 
       if (existingSlides.data.data.length > 0) {
-        await updateSlides(id, slidesData);
+        await updateSlides(slidesData);
       } else {
         await createSlides(id, slidesData);
       }
 
       // Hiển thị thông báo thành công
+      alert("Đã lưu thành công!");
     } catch (error) {
       console.error("Error saving slides:", error);
+      alert("Có lỗi xảy ra khi lưu slides!");
     } finally {
       setIsSaving(false);
     }
   };
 
-  // const handleInputChange = (e) => {
-  //   const { name, value } = e.target;
-  //   setFormData((prev) => ({
-  //     ...prev,
-  //     [name]: value,
-  //   }));
-  // };
+  const onDragEnd = (result) => {
+    if (!result.destination) return;
+
+    const items = Array.from(slides);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
+    const updatedItems = items.map((item, index) => ({
+      ...item,
+      slideOrder: index,
+    }));
+
+    setSlides(updatedItems);
+  };
 
   return (
     <div className="h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex flex-col overflow-hidden">
@@ -455,7 +485,6 @@ const SlideManage = () => {
           </div>
 
           {/* Slide Thumbnails */}
-
           <div
             className={`w-full flex-shrink-0 transition-all duration-300 ${
               thumbnailsVisible
@@ -465,54 +494,88 @@ const SlideManage = () => {
           >
             <div className="bg-white/60 backdrop-blur-sm border-t border-gray-200/50 shadow-sm">
               <div className="w-full overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
-                <div className="inline-flex items-center space-x-4 px-4 py-4">
-                  {slides.map((slide) => (
-                    <div
-                      key={slide.id}
-                      onClick={() => selectSlide(slide.id)}
-                      className={`relative flex-shrink-0 w-32 h-18 rounded-md border-2 cursor-pointer transition-all duration-200 hover:scale-105 ${
-                        slide.id === currentSlide
-                          ? "border-purple-500 shadow-lg shadow-purple-200"
-                          : "border-gray-300 hover:border-gray-400 shadow-sm"
-                      }`}
-                    >
-                      <div className="w-full h-full bg-white rounded-md overflow-hidden relative">
-                        {slide.content ? (
-                          <div
-                            className="w-full h-full scale-[0.25] origin-top-left overflow-hidden bg-white"
-                            style={{
-                              width: "400%",
-                              height: "400%",
-                            }}
+                <DragDropContext onDragEnd={onDragEnd}>
+                  <Droppable droppableId="thumbnails" direction="horizontal">
+                    {(provided) => (
+                      <div
+                        className="inline-flex items-center space-x-4 px-4 py-4"
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                      >
+                        {slides.map((slide, index) => (
+                          <Draggable
+                            key={slide.id}
+                            draggableId={slide.id.toString()}
+                            index={index}
                           >
-                            {renderedSlides[slide.id]}
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center h-full text-gray-400">
-                            <span className="text-xs font-medium">
-                              Slide {slide.slideOrder || slide.id}
-                            </span>
-                          </div>
+                            {(provided, snapshot) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                {...provided.dragHandleProps}
+                                onClick={() => selectSlide(slide.id)}
+                                className={`relative flex-shrink-0 w-32 h-18 rounded-md border-2 cursor-grab active:cursor-grabbing transition-all duration-200 hover:scale-105 select-none ${
+                                  slide.id === currentSlide
+                                    ? "border-purple-500 shadow-lg shadow-purple-200"
+                                    : "border-gray-300 hover:border-gray-400 shadow-sm"
+                                } ${
+                                  snapshot.isDragging
+                                    ? "shadow-xl scale-105"
+                                    : ""
+                                }`}
+                                style={{
+                                  ...provided.draggableProps.style,
+                                  userSelect: "none",
+                                  WebkitUserSelect: "none",
+                                  MozUserSelect: "none",
+                                  msUserSelect: "none",
+                                }}
+                              >
+                                <div className="w-full h-full bg-white rounded-md overflow-hidden relative pointer-events-none">
+                                  {slide.content ? (
+                                    <div
+                                      className="w-full h-full scale-[0.25] origin-top-left overflow-hidden bg-white"
+                                      style={{
+                                        width: "400%",
+                                        height: "400%",
+                                      }}
+                                    >
+                                      {renderedSlides[slide.id]}
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-center h-full text-gray-400">
+                                      <span className="text-xs font-medium">
+                                        Slide {slide.slideOrder || slide.id}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                                {slide.id === currentSlide && (
+                                  <div className="absolute -top-2 -left-2 w-6 h-6 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg pointer-events-none">
+                                    <span className="text-xs text-white font-bold">
+                                      {slides.findIndex(
+                                        (s) => s.id === slide.id
+                                      ) + 1}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
+                        {mode === "edit" && (
+                          <button
+                            onClick={addNewSlide}
+                            className="flex-shrink-0 w-32 h-18 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center hover:border-purple-400 hover:bg-purple-50 transition-all duration-200 group"
+                          >
+                            <Plus className="w-6 h-6 text-gray-400 group-hover:text-purple-500 transition-colors" />
+                          </button>
                         )}
                       </div>
-                      {slide.id === currentSlide && (
-                        <div className="absolute -top-2 -left-2 w-6 h-6 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg">
-                          <span className="text-xs text-white font-bold">
-                            {slides.findIndex((s) => s.id === slide.id) + 1}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  {mode === "edit" && (
-                    <button
-                      onClick={addNewSlide}
-                      className="flex-shrink-0 w-32 h-18 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center hover:border-purple-400 hover:bg-purple-50 transition-all duration-200 group"
-                    >
-                      <Plus className="w-6 h-6 text-gray-400 group-hover:text-purple-500 transition-colors" />
-                    </button>
-                  )}
-                </div>
+                    )}
+                  </Droppable>
+                </DragDropContext>
               </div>
             </div>
           </div>

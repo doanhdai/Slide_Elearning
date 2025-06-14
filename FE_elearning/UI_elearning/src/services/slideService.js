@@ -7,5 +7,5 @@ export const createSlides = (id, dataSlide) => axiosInstance.post(`/slides/creat
 
 export const updateSlides = (dataSlide) => axiosInstance.put(`/slides/updateSlides`, dataSlide);
 
-export const deleteSlide = (id) => axiosInstance.delete(`/slides/${id}`);
+export const deleteSlide = (slideId) => axiosInstance.delete(`/slides/${slideId}`);
 

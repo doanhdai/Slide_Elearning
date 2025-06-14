@@ -11,8 +11,6 @@ const RightSidebar = ({
   resetContent,
   currentSlide,
   slides,
-  getCurrentSlideContent,
-  thumbnailsVisible,
 }) => {
   const [teacherChecked, setTeacherChecked] = useState(false);
   const [studentChecked, setStudentChecked] = useState(false);
@@ -136,50 +134,6 @@ const RightSidebar = ({
                 >
                   🔄 Xóa nội dung
                 </button>
-              </div>
-            </div>
-
-            {/* Slide Info */}
-            <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-5 border border-purple-200/50">
-              <h3 className="text-sm font-semibold text-gray-800 mb-4 flex items-center space-x-2">
-                <div className="w-2 h-2 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full"></div>
-                <span>Thông tin</span>
-              </h3>
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Slide hiện tại:</span>
-                  <span className="font-semibold text-purple-700">
-                    {currentSlide}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Tổng số slide:</span>
-                  <span className="font-semibold text-purple-700">
-                    {slides.length}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Có nội dung:</span>
-                  <span
-                    className={`font-semibold ${
-                      getCurrentSlideContent()
-                        ? "text-green-600"
-                        : "text-orange-600"
-                    }`}
-                  >
-                    {getCurrentSlideContent() ? "✓ Có" : "✗ Chưa"}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Thumbnails:</span>
-                  <span
-                    className={`font-semibold ${
-                      thumbnailsVisible ? "text-green-600" : "text-gray-600"
-                    }`}
-                  >
-                    {thumbnailsVisible ? "✓ Hiện" : "✗ Ẩn"}
-                  </span>
-                </div>
               </div>
             </div>
           </div>
