@@ -1,0 +1,11 @@
+
+@tailwind utilities;
+@import "tailwindcss";
+
+/* Basic Styles */
+body {
+  margin: 0;
+  /* overflow: hidden; */
+  font-family: "Arial", sans-serif;
+  background-color: #f0f2f5;
+}
