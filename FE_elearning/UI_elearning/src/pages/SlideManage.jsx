@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import {
   Play,
   Save,
@@ -21,33 +27,16 @@ import {
 } from "../services/slideService";
 import { useParams, useNavigate } from "react-router-dom";
 
-const SlideManage = () => {
-  const { id } = useParams();
-  const [searchParams] = useSearchParams();
-  const mode = searchParams.get("mode") || "edit";
-  const navigate = useNavigate();
-  const [slides, setSlides] = useState([]);
-  const [deletedSlideIds, setDeletedSlideIds] = useState([]);
-  const [currentSlide, setCurrentSlide] = useState(null);
-  const [lectureTitle, setLectureTitle] = useState("");
-  const [showHTMLModal, setShowHTMLModal] = useState(false);
-  const [tempHTMLContent, setTempHTMLContent] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [thumbnailsVisible, setThumbnailsVisible] = useState(true);
-  const [isPresenting, setIsPresenting] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+// Memoized IframeSlideRenderer to prevent unnecessary re-renders
+const IframeSlideRenderer = React.memo(
+  ({ htmlContent, slideId, style = {} }) => {
+    const iframeRef = useRef(null);
 
-  const IframeSlideRenderer = React.memo(
-    ({ htmlContent, slideId, style = {} }) => {
-      const iframeRef = React.useRef(null);
+    useEffect(() => {
+      if (iframeRef.current && htmlContent) {
+        const iframe = iframeRef.current;
 
-      React.useEffect(() => {
-        if (iframeRef.current && htmlContent) {
-          const iframe = iframeRef.current;
-
-          // Tạo HTML document hoàn chỉnh
-          const fullHTML = `
+        const fullHTML = `
           <!DOCTYPE html>
           <html lang="vi">
           <head>
@@ -73,91 +62,126 @@ const SlideManage = () => {
           </html>
         `;
 
-          // Gán HTML vào iframe
-          iframe.srcdoc = fullHTML;
-        }
-      }, [htmlContent, slideId]);
+        iframe.srcdoc = fullHTML;
+      }
+    }, [htmlContent, slideId]);
 
-      return (
-        <iframe
-          ref={iframeRef}
-          style={{
-            width: "100%",
-            height: "100%",
-            border: "none",
-            background: "white",
-            ...style,
-          }}
-          sandbox="allow-scripts allow-same-origin"
-          title={`Slide ${slideId}`}
-        />
-      );
-    }
-  );
+    return (
+      <iframe
+        ref={iframeRef}
+        style={{
+          width: "100%",
+          height: "100%",
+          border: "none",
+          background: "white",
+          ...style,
+        }}
+        sandbox="allow-scripts allow-same-origin"
+        title={`Slide ${slideId}`}
+      />
+    );
+  },
+  // Custom comparison function to prevent re-renders when content hasn't changed
+  (prevProps, nextProps) => {
+    return (
+      prevProps.htmlContent === nextProps.htmlContent &&
+      prevProps.slideId === nextProps.slideId &&
+      JSON.stringify(prevProps.style) === JSON.stringify(nextProps.style)
+    );
+  }
+);
 
-  // Cache các slide đã render
-  const renderedSlides = useMemo(() => {
-    return slides.reduce((acc, slide) => {
-      acc[slide.id] = (
-        <IframeSlideRenderer
-          key={slide.id}
-          htmlContent={slide.content}
-          slideId={slide.id}
-        />
-      );
-      return acc;
-    }, {});
+const SlideManage = () => {
+  const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const mode = searchParams.get("mode") || "edit";
+  const navigate = useNavigate();
+
+  // Separate states to minimize re-renders
+  const [slides, setSlides] = useState([]);
+  const [currentSlideId, setCurrentSlideId] = useState(null);
+  const [lectureTitle, setLectureTitle] = useState("");
+  const [showHTMLModal, setShowHTMLModal] = useState(false);
+  const [tempHTMLContent, setTempHTMLContent] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [thumbnailsVisible, setThumbnailsVisible] = useState(true);
+  const [isPresenting, setIsPresenting] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Use refs to store values that don't need to trigger re-renders
+  const slidesRef = useRef(slides);
+  const currentSlideIdRef = useRef(currentSlideId);
+
+  // Update refs when state changes
+  useEffect(() => {
+    slidesRef.current = slides;
   }, [slides]);
 
-  // Tối ưu các hàm xử lý sự kiện với useCallback
+  useEffect(() => {
+    currentSlideIdRef.current = currentSlideId;
+  }, [currentSlideId]);
+
+  // Memoize current slide data
+  const currentSlide = useMemo(() => {
+    return slides.find((slide) => slide.id === currentSlideId);
+  }, [slides, currentSlideId]);
+
+  // Memoize current slide index
+  const currentSlideIndex = useMemo(() => {
+    return slides.findIndex((slide) => slide.id === currentSlideId);
+  }, [slides, currentSlideId]);
+
+  // Optimized slide selection
   const selectSlide = useCallback(
     (slideId) => {
-      setCurrentSlide(slideId);
-      const updatedSlides = slides.map((slide) => ({
-        ...slide,
-        isActive: slide.id === slideId,
-      }));
-      setSlides(updatedSlides);
+      if (slideId === currentSlideIdRef.current) return; // Prevent unnecessary updates
 
-      // Update lecture title when changing slides
-      const selectedSlide = updatedSlides.find((slide) => slide.id === slideId);
-      if (selectedSlide && selectedSlide.title) {
+      setCurrentSlideId(slideId);
+
+      // Update lecture title only if it's different
+      const selectedSlide = slidesRef.current.find(
+        (slide) => slide.id === slideId
+      );
+      if (selectedSlide?.title && selectedSlide.title !== lectureTitle) {
         setLectureTitle(selectedSlide.title);
       }
     },
-    [slides]
+    [lectureTitle]
   );
 
+  // Optimized navigation functions
   const goToNextSlide = useCallback(() => {
-    const currentIndex = slides.findIndex((slide) => slide.id === currentSlide);
-    if (currentIndex < slides.length - 1) {
-      selectSlide(slides[currentIndex + 1].id);
+    const currentIndex = slidesRef.current.findIndex(
+      (slide) => slide.id === currentSlideIdRef.current
+    );
+    if (currentIndex < slidesRef.current.length - 1) {
+      selectSlide(slidesRef.current[currentIndex + 1].id);
     }
-  }, [currentSlide, slides, selectSlide]);
+  }, [selectSlide]);
 
   const goToPreviousSlide = useCallback(() => {
-    const currentIndex = slides.findIndex((slide) => slide.id === currentSlide);
+    const currentIndex = slidesRef.current.findIndex(
+      (slide) => slide.id === currentSlideIdRef.current
+    );
     if (currentIndex > 0) {
-      selectSlide(slides[currentIndex - 1].id);
+      selectSlide(slidesRef.current[currentIndex - 1].id);
     }
-  }, [currentSlide, slides, selectSlide]);
+  }, [selectSlide]);
 
+  // Load slides only once
   useEffect(() => {
-    const getAllSlide = async () => {
+    const getAllSlides = async () => {
       try {
         const data = await getSlideById(id);
         const slideData = data.data.data;
-        console.log(slideData);
 
-        // Sort slides by slideOrder
         const sortedSlides = slideData.sort(
           (a, b) => a.slideOrder - b.slideOrder
         );
-
         const formattedSlides = sortedSlides.map((slide, index) => ({
           id: slide.id,
           content: slide.htmlContent,
-          isActive: index === 0,
           title: slide.title,
           createdAt: slide.createdAt,
           slideOrder: slide.slideOrder,
@@ -166,126 +190,129 @@ const SlideManage = () => {
         }));
 
         setSlides(formattedSlides);
-        // Set current slide to first slide's id
         if (formattedSlides.length > 0) {
-          setCurrentSlide(formattedSlides[0].id);
+          setCurrentSlideId(formattedSlides[0].id);
+          setLectureTitle(formattedSlides[0].title || "");
         }
-        setLectureTitle(slideData[0]?.title || "");
       } catch (error) {
         console.error("Error fetching slides:", error);
       }
     };
-    getAllSlide();
+    getAllSlides();
   }, [id]);
 
-  const getCurrentSlideContent = () => {
-    const current = slides.find((slide) => slide.id === currentSlide);
-    return current?.content || "";
-  };
+  // Optimized content getters
+  const getCurrentSlideContent = useCallback(() => {
+    return currentSlide?.content || "";
+  }, [currentSlide]);
 
-  const getProcessedSlideContent = () => {
-    const current = slides.find((slide) => slide.id === currentSlide);
-    return current?.content || "";
-  };
+  const getProcessedSlideContent = useCallback(() => {
+    return currentSlide?.content || "";
+  }, [currentSlide]);
 
-  const updateCurrentSlideContent = (content) => {
-    setSlides(
-      slides.map((slide) =>
-        slide.id === currentSlide ? { ...slide, content } : slide
+  // Optimized content update - only update the specific slide
+  const updateCurrentSlideContent = useCallback((content) => {
+    setSlides((prevSlides) =>
+      prevSlides.map((slide) =>
+        slide.id === currentSlideIdRef.current ? { ...slide, content } : slide
       )
     );
-  };
+  }, []);
 
-  const addNewSlide = () => {
+  const addNewSlide = useCallback(() => {
     const newSlide = {
       id: Date.now(),
       content: "",
-      isActive: false,
       isNew: true,
+      title: "",
+      slideOrder: slides.length,
     };
-    setSlides([...slides, newSlide]);
-  };
+    setSlides((prevSlides) => [...prevSlides, newSlide]);
+  }, [slides.length]);
 
-  const handleKeyDown = (e) => {
-    if (isPresenting) {
-      if (e.key === "ArrowRight" || e.key === " ") {
-        goToNextSlide();
-      } else if (e.key === "ArrowLeft") {
-        goToPreviousSlide();
-      } else if (e.key === "Escape") {
-        setIsPresenting(false);
+  // Optimized keyboard handler
+  const handleKeyDown = useCallback(
+    (e) => {
+      if (isPresenting) {
+        if (e.key === "ArrowRight" || e.key === " ") {
+          goToNextSlide();
+        } else if (e.key === "ArrowLeft") {
+          goToPreviousSlide();
+        } else if (e.key === "Escape") {
+          setIsPresenting(false);
+        }
+      } else {
+        if (e.key === "ArrowRight") {
+          goToNextSlide();
+        } else if (e.key === "ArrowLeft") {
+          goToPreviousSlide();
+        }
       }
-    } else {
-      if (e.key === "ArrowRight") {
-        goToNextSlide();
-      } else if (e.key === "ArrowLeft") {
-        goToPreviousSlide();
-      }
-    }
-  };
+    },
+    [isPresenting, goToNextSlide, goToPreviousSlide]
+  );
 
-  React.useEffect(() => {
+  useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [currentSlide, slides.length]);
+  }, [handleKeyDown]);
 
-  const handleSaveHTML = () => {
+  const handleSaveHTML = useCallback(() => {
     updateCurrentSlideContent(tempHTMLContent);
     setShowHTMLModal(false);
-  };
+  }, [tempHTMLContent, updateCurrentSlideContent]);
 
-  const handleOpenHTMLModal = () => {
+  const handleOpenHTMLModal = useCallback(() => {
     setTempHTMLContent(getCurrentSlideContent());
     setShowHTMLModal(true);
-  };
+  }, [getCurrentSlideContent]);
 
-  const duplicateSlide = () => {
-    const currentSlideData = slides.find((slide) => slide.id === currentSlide);
-    if (currentSlideData) {
+  const duplicateSlide = useCallback(() => {
+    if (currentSlide) {
       const newSlide = {
         id: Date.now(),
-        content: currentSlideData.content,
-        isActive: false,
-        isNew: false,
+        content: currentSlide.content,
+        title: currentSlide.title + " (Copy)",
+        isNew: true,
+        slideOrder: slides.length,
       };
-      setSlides([...slides, newSlide]);
+      setSlides((prevSlides) => [...prevSlides, newSlide]);
     }
-  };
+  }, [currentSlide, slides.length]);
 
-  const deleteSlide = async () => {
-    if (slides.length > 1) {
-      try {
-        const currentSlideData = slides.find(
-          (slide) => slide.id === currentSlide
-        );
+  const deleteSlide = useCallback(async () => {
+    if (slides.length <= 1) return;
 
-        // Chỉ gọi API xóa nếu slide không phải là slide mới
-        if (currentSlideData && !currentSlideData.isNew) {
-          await deleteSlideService(currentSlide);
-        }
-
-        // Cập nhật UI
-        const filteredSlides = slides.filter(
-          (slide) => slide.id !== currentSlide
-        );
-        setSlides(filteredSlides);
-        if (filteredSlides.length > 0) {
-          setCurrentSlide(filteredSlides[0].id);
-        }
-      } catch (error) {
-        console.error("Error deleting slide:", error);
-        alert("Có lỗi xảy ra khi xóa slide!");
+    try {
+      if (currentSlide && !currentSlide.isNew) {
+        await deleteSlideService(currentSlideId);
       }
+
+      const filteredSlides = slides.filter(
+        (slide) => slide.id !== currentSlideId
+      );
+      setSlides(filteredSlides);
+
+      if (filteredSlides.length > 0) {
+        const newCurrentIndex = Math.min(
+          currentSlideIndex,
+          filteredSlides.length - 1
+        );
+        setCurrentSlideId(filteredSlides[newCurrentIndex].id);
+      }
+    } catch (error) {
+      console.error("Error deleting slide:", error);
+      alert("Có lỗi xảy ra khi xóa slide!");
     }
-  };
+  }, [slides, currentSlide, currentSlideId, currentSlideIndex]);
 
-  const resetContent = () => {
+  const resetContent = useCallback(() => {
     updateCurrentSlideContent("");
-  };
+  }, [updateCurrentSlideContent]);
 
-  const toggleFullscreen = () => {
+  const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen();
       setIsFullscreen(true);
@@ -295,7 +322,7 @@ const SlideManage = () => {
       setIsFullscreen(false);
       setIsPresenting(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -314,23 +341,20 @@ const SlideManage = () => {
 
   const updateSlideTitle = useCallback(
     (newTitle) => {
-      setSlides(
-        slides.map((slide) => {
-          if (slide.id === currentSlide) {
-            return { ...slide, title: newTitle };
-          }
-          return slide;
-        })
+      setSlides((prevSlides) =>
+        prevSlides.map((slide) =>
+          slide.id === currentSlideId ? { ...slide, title: newTitle } : slide
+        )
       );
     },
-    [currentSlide, slides]
+    [currentSlideId]
   );
 
   const updateSlideRole = useCallback(
     (isTeacher, isStudent) => {
-      setSlides(
-        slides.map((slide) => {
-          if (slide.id === currentSlide) {
+      setSlides((prevSlides) =>
+        prevSlides.map((slide) => {
+          if (slide.id === currentSlideId) {
             let roleId;
             if (isTeacher && isStudent) {
               roleId = 3;
@@ -347,19 +371,16 @@ const SlideManage = () => {
         })
       );
     },
-    [currentSlide, slides]
+    [currentSlideId]
   );
 
-  // Hàm xử lý lưu slides
-  const handleSaveSlides = async () => {
+  const handleSaveSlides = useCallback(async () => {
     try {
       setIsSaving(true);
 
-      // Tách slides thành 2 nhóm: slides cần cập nhật và slides cần tạo mới
       const existingSlides = slides.filter((slide) => !slide.isNew);
       const newSlides = slides.filter((slide) => slide.isNew);
 
-      // Format data cho slides cần cập nhật
       const updateData = existingSlides.map((slide, index) => ({
         id: slide.id,
         title: slide.title || `Slide ${index + 1}`,
@@ -368,7 +389,6 @@ const SlideManage = () => {
         roleId: slide.roleId || slide.role?.id || 1,
       }));
 
-      // Format data cho slides cần tạo mới
       const createData = newSlides.map((slide, index) => ({
         title: slide.title || `Slide ${index + 1}`,
         htmlContent: slide.content,
@@ -376,44 +396,38 @@ const SlideManage = () => {
         roleId: slide.roleId || slide.role?.id || 1,
       }));
 
-      // Kiểm tra xem đã có slides trong bài giảng chưa
       const existingSlidesResponse = await getSlideById(id);
 
       if (existingSlidesResponse.data.data.length > 0) {
-        // Nếu có slides cần cập nhật
         if (updateData.length > 0) {
           await updateSlides(updateData);
         }
-        // Nếu có slides cần tạo mới
         if (createData.length > 0) {
           await createSlides(id, createData);
         }
       } else {
-        // Nếu chưa có slides nào, tạo mới tất cả
         await createSlides(id, [...updateData, ...createData]);
       }
 
-      // Sau khi lưu thành công, cập nhật lại danh sách slides
+      // Refresh slides after save
       const updatedSlidesResponse = await getSlideById(id);
       const updatedSlides = updatedSlidesResponse.data.data
-        .sort((a, b) => a.slideOrder - b.slideOrder) // Sắp xếp theo slideOrder
-        .map((slide, index) => ({
+        .sort((a, b) => a.slideOrder - b.slideOrder)
+        .map((slide) => ({
           id: slide.id,
           content: slide.htmlContent,
-          isActive: index === 0,
           title: slide.title,
           createdAt: slide.createdAt,
-          slideOrder: index, // Cập nhật lại slideOrder để đảm bảo liên tục
+          slideOrder: slide.slideOrder,
           role: slide.role,
           isNew: false,
         }));
 
       setSlides(updatedSlides);
-      if (updatedSlides.length > 0) {
-        setCurrentSlide(updatedSlides[0].id);
+      if (updatedSlides.length > 0 && !currentSlideId) {
+        setCurrentSlideId(updatedSlides[0].id);
       }
 
-      // Hiển thị thông báo thành công
       console.log("Đã lưu thành công!");
     } catch (error) {
       console.error("Error saving slides:", error);
@@ -421,21 +435,92 @@ const SlideManage = () => {
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [slides, id, currentSlideId]);
 
-  const onDragEnd = (result) => {
+  const onDragEnd = useCallback((result) => {
     if (!result.destination) return;
 
-    const items = Array.from(slides);
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
-    const updatedItems = items.map((item, index) => ({
-      ...item,
-      slideOrder: index,
-    }));
+    setSlides((prevSlides) => {
+      const items = Array.from(prevSlides);
+      const [reorderedItem] = items.splice(result.source.index, 1);
+      items.splice(result.destination.index, 0, reorderedItem);
 
-    setSlides(updatedItems);
-  };
+      return items.map((item, index) => ({
+        ...item,
+        slideOrder: index,
+      }));
+    });
+  }, []);
+
+  // Memoize rendered slides to prevent unnecessary re-renders
+  const renderedSlides = useMemo(() => {
+    const rendered = {};
+    slides.forEach((slide) => {
+      rendered[slide.id] = (
+        <IframeSlideRenderer
+          key={slide.id}
+          htmlContent={slide.content}
+          slideId={slide.id}
+        />
+      );
+    });
+    return rendered;
+  }, [slides]);
+
+  // Memoize thumbnail components
+  const thumbnailComponents = useMemo(() => {
+    return slides.map((slide, index) => (
+      <Draggable key={slide.id} draggableId={slide.id.toString()} index={index}>
+        {(provided, snapshot) => (
+          <div
+            ref={provided.innerRef}
+            {...provided.draggableProps}
+            {...provided.dragHandleProps}
+            onClick={() => selectSlide(slide.id)}
+            className={`relative flex-shrink-0 w-32 h-18 rounded-md border-2 cursor-grab active:cursor-grabbing transition-all duration-200 hover:scale-105 select-none ${
+              slide.id === currentSlideId
+                ? "border-purple-500 shadow-lg shadow-purple-200"
+                : "border-gray-300 hover:border-gray-400 shadow-sm"
+            } ${snapshot.isDragging ? "shadow-xl scale-105" : ""}`}
+            style={{
+              ...provided.draggableProps.style,
+              userSelect: "none",
+              WebkitUserSelect: "none",
+              MozUserSelect: "none",
+              msUserSelect: "none",
+            }}
+          >
+            <div className="w-full h-full bg-white rounded-md overflow-hidden relative pointer-events-none">
+              {slide.content ? (
+                <div
+                  className="w-full h-full scale-[0.25] origin-top-left overflow-hidden bg-white"
+                  style={{
+                    width: "400%",
+                    height: "400%",
+                  }}
+                >
+                  {renderedSlides[slide.id]}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-400">
+                  <span className="text-xs font-medium">
+                    Slide {slide.slideOrder || slide.id}
+                  </span>
+                </div>
+              )}
+            </div>
+            {slide.id === currentSlideId && (
+              <div className="absolute -top-2 -left-2 w-6 h-6 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg pointer-events-none">
+                <span className="text-xs text-white font-bold">
+                  {index + 1}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </Draggable>
+    ));
+  }, [slides, currentSlideId, selectSlide, renderedSlides]);
 
   return (
     <div className="h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex flex-col overflow-hidden">
@@ -510,7 +595,7 @@ const SlideManage = () => {
                         mode === "edit" ? handleOpenHTMLModal : undefined
                       }
                     >
-                      {currentSlide && renderedSlides[currentSlide] ? (
+                      {currentSlideId && renderedSlides[currentSlideId] ? (
                         <div className="w-full h-full overflow-hidden bg-white rounded-lg shadow-lg relative group">
                           <div className="absolute inset-0 bg-transparent z-10 group-hover:bg-gray-50/20 transition-colors" />
                           <div
@@ -521,7 +606,7 @@ const SlideManage = () => {
                               height: "200%",
                             }}
                           >
-                            {renderedSlides[currentSlide]}
+                            {renderedSlides[currentSlideId]}
                           </div>
                         </div>
                       ) : (
@@ -546,19 +631,14 @@ const SlideManage = () => {
                 {/* Navigation Buttons */}
                 <button
                   onClick={goToPreviousSlide}
-                  disabled={
-                    slides.findIndex((s) => s.id === currentSlide) === 0
-                  }
+                  disabled={currentSlideIndex === 0}
                   className="absolute left-0 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/80 backdrop-blur-sm rounded-full shadow-lg flex items-center justify-center text-gray-600 hover:text-gray-900 hover:bg-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <ChevronLeft className="w-6 h-6" />
                 </button>
                 <button
                   onClick={goToNextSlide}
-                  disabled={
-                    slides.findIndex((s) => s.id === currentSlide) ===
-                    slides.length - 1
-                  }
+                  disabled={currentSlideIndex === slides.length - 1}
                   className="absolute right-0 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/80 backdrop-blur-sm rounded-full shadow-lg flex items-center justify-center text-gray-600 hover:text-gray-900 hover:bg-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <ChevronRight className="w-6 h-6" />
@@ -585,67 +665,7 @@ const SlideManage = () => {
                         ref={provided.innerRef}
                         {...provided.droppableProps}
                       >
-                        {slides.map((slide, index) => (
-                          <Draggable
-                            key={slide.id}
-                            draggableId={slide.id.toString()}
-                            index={index}
-                          >
-                            {(provided, snapshot) => (
-                              <div
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                onClick={() => selectSlide(slide.id)}
-                                className={`relative flex-shrink-0 w-32 h-18 rounded-md border-2 cursor-grab active:cursor-grabbing transition-all duration-200 hover:scale-105 select-none ${
-                                  slide.id === currentSlide
-                                    ? "border-purple-500 shadow-lg shadow-purple-200"
-                                    : "border-gray-300 hover:border-gray-400 shadow-sm"
-                                } ${
-                                  snapshot.isDragging
-                                    ? "shadow-xl scale-105"
-                                    : ""
-                                }`}
-                                style={{
-                                  ...provided.draggableProps.style,
-                                  userSelect: "none",
-                                  WebkitUserSelect: "none",
-                                  MozUserSelect: "none",
-                                  msUserSelect: "none",
-                                }}
-                              >
-                                <div className="w-full h-full bg-white rounded-md overflow-hidden relative pointer-events-none">
-                                  {slide.content ? (
-                                    <div
-                                      className="w-full h-full scale-[0.25] origin-top-left overflow-hidden bg-white"
-                                      style={{
-                                        width: "400%",
-                                        height: "400%",
-                                      }}
-                                    >
-                                      {renderedSlides[slide.id]}
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center justify-center h-full text-gray-400">
-                                      <span className="text-xs font-medium">
-                                        Slide {slide.slideOrder || slide.id}
-                                      </span>
-                                    </div>
-                                  )}
-                                </div>
-                                {slide.id === currentSlide && (
-                                  <div className="absolute -top-2 -left-2 w-6 h-6 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg pointer-events-none">
-                                    <span className="text-xs text-white font-bold">
-                                      {slides.findIndex(
-                                        (s) => s.id === slide.id
-                                      ) + 1}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </Draggable>
-                        ))}
+                        {thumbnailComponents}
                         {provided.placeholder}
                         {mode === "edit" && (
                           <button
@@ -677,7 +697,7 @@ const SlideManage = () => {
             duplicateSlide={duplicateSlide}
             deleteSlide={deleteSlide}
             resetContent={resetContent}
-            currentSlide={currentSlide}
+            currentSlide={currentSlideId}
             slides={slides}
             updateSlideRole={updateSlideRole}
             thumbnailsVisible={thumbnailsVisible}
@@ -692,7 +712,7 @@ const SlideManage = () => {
             {getProcessedSlideContent() ? (
               <IframeSlideRenderer
                 htmlContent={getProcessedSlideContent()}
-                slideId={currentSlide}
+                slideId={currentSlideId}
                 style={{
                   width: "100%",
                   height: "100%",
