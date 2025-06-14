@@ -11,15 +11,15 @@ const RightSidebar = ({
   resetContent,
   currentSlide,
   slides,
+  updateSlideRole,
 }) => {
   const [teacherChecked, setTeacherChecked] = useState(false);
   const [studentChecked, setStudentChecked] = useState(false);
 
   useEffect(() => {
     const currentSlideData = slides.find((slide) => slide.id === currentSlide);
-    console.log(currentSlideData);
     if (currentSlideData) {
-      const role = currentSlideData.role?.id;
+      const role = currentSlideData.roleId || currentSlideData.role?.id;
       if (role === 1) {
         setTeacherChecked(true);
         setStudentChecked(false);
@@ -35,6 +35,17 @@ const RightSidebar = ({
       }
     }
   }, [currentSlide, slides]);
+
+  // Hàm xử lý khi checkbox thay đổi
+  const handleRoleChange = (isTeacher, checked) => {
+    if (isTeacher) {
+      setTeacherChecked(checked);
+      updateSlideRole(checked, studentChecked);
+    } else {
+      setStudentChecked(checked);
+      updateSlideRole(teacherChecked, checked);
+    }
+  };
 
   return (
     <>
@@ -71,7 +82,7 @@ const RightSidebar = ({
                   <input
                     type="checkbox"
                     checked={teacherChecked}
-                    onChange={(e) => setTeacherChecked(e.target.checked)}
+                    onChange={(e) => handleRoleChange(true, e.target.checked)}
                     className="w-4 h-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
                   />
                   <span className="text-sm text-gray-700 group-hover:text-gray-900 transition-colors">
@@ -82,7 +93,7 @@ const RightSidebar = ({
                   <input
                     type="checkbox"
                     checked={studentChecked}
-                    onChange={(e) => setStudentChecked(e.target.checked)}
+                    onChange={(e) => handleRoleChange(false, e.target.checked)}
                     className="w-4 h-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
                   />
                   <span className="text-sm text-gray-700 group-hover:text-gray-900 transition-colors">

@@ -113,12 +113,17 @@ const SlideManage = () => {
   const selectSlide = useCallback(
     (slideId) => {
       setCurrentSlide(slideId);
-      setSlides(
-        slides.map((slide) => ({
-          ...slide,
-          isActive: slide.id === slideId,
-        }))
-      );
+      const updatedSlides = slides.map((slide) => ({
+        ...slide,
+        isActive: slide.id === slideId,
+      }));
+      setSlides(updatedSlides);
+
+      // Update lecture title when changing slides
+      const selectedSlide = updatedSlides.find((slide) => slide.id === slideId);
+      if (selectedSlide && selectedSlide.title) {
+        setLectureTitle(selectedSlide.title);
+      }
     },
     [slides]
   );
@@ -307,31 +312,109 @@ const SlideManage = () => {
     };
   }, []);
 
+  const updateSlideTitle = useCallback(
+    (newTitle) => {
+      setSlides(
+        slides.map((slide) => {
+          if (slide.id === currentSlide) {
+            return { ...slide, title: newTitle };
+          }
+          return slide;
+        })
+      );
+    },
+    [currentSlide, slides]
+  );
+
+  const updateSlideRole = useCallback(
+    (isTeacher, isStudent) => {
+      setSlides(
+        slides.map((slide) => {
+          if (slide.id === currentSlide) {
+            let roleId;
+            if (isTeacher && isStudent) {
+              roleId = 3;
+            } else if (isTeacher) {
+              roleId = 1;
+            } else if (isStudent) {
+              roleId = 2;
+            } else {
+              roleId = null;
+            }
+            return { ...slide, roleId };
+          }
+          return slide;
+        })
+      );
+    },
+    [currentSlide, slides]
+  );
+
   // Hàm xử lý lưu slides
   const handleSaveSlides = async () => {
     try {
       setIsSaving(true);
 
-      // Format data để gửi lên server
-      const slidesData = slides.map((slide, index) => ({
-        id: slide.isNew ? null : slide.id, // Nếu là slide mới thì gửi id là null
+      // Tách slides thành 2 nhóm: slides cần cập nhật và slides cần tạo mới
+      const existingSlides = slides.filter((slide) => !slide.isNew);
+      const newSlides = slides.filter((slide) => slide.isNew);
+
+      // Format data cho slides cần cập nhật
+      const updateData = existingSlides.map((slide, index) => ({
+        id: slide.id,
         title: slide.title || `Slide ${index + 1}`,
         htmlContent: slide.content,
         slideOrder: index,
-        roleId: slide.roleId || 1,
+        roleId: slide.roleId || slide.role?.id || 1,
+      }));
+
+      // Format data cho slides cần tạo mới
+      const createData = newSlides.map((slide, index) => ({
+        title: slide.title || `Slide ${index + 1}`,
+        htmlContent: slide.content,
+        slideOrder: existingSlides.length + index,
+        roleId: slide.roleId || slide.role?.id || 1,
       }));
 
       // Kiểm tra xem đã có slides trong bài giảng chưa
-      const existingSlides = await getSlideById(id);
+      const existingSlidesResponse = await getSlideById(id);
 
-      if (existingSlides.data.data.length > 0) {
-        await updateSlides(slidesData);
+      if (existingSlidesResponse.data.data.length > 0) {
+        // Nếu có slides cần cập nhật
+        if (updateData.length > 0) {
+          await updateSlides(updateData);
+        }
+        // Nếu có slides cần tạo mới
+        if (createData.length > 0) {
+          await createSlides(id, createData);
+        }
       } else {
-        await createSlides(id, slidesData);
+        // Nếu chưa có slides nào, tạo mới tất cả
+        await createSlides(id, [...updateData, ...createData]);
+      }
+
+      // Sau khi lưu thành công, cập nhật lại danh sách slides
+      const updatedSlidesResponse = await getSlideById(id);
+      const updatedSlides = updatedSlidesResponse.data.data
+        .sort((a, b) => a.slideOrder - b.slideOrder) // Sắp xếp theo slideOrder
+        .map((slide, index) => ({
+          id: slide.id,
+          content: slide.htmlContent,
+          isActive: index === 0,
+          title: slide.title,
+          createdAt: slide.createdAt,
+          slideOrder: index, // Cập nhật lại slideOrder để đảm bảo liên tục
+          role: slide.role,
+          isNew: false,
+        }));
+
+      setSlides(updatedSlides);
+      if (updatedSlides.length > 0) {
+        setCurrentSlide(updatedSlides[0].id);
       }
 
       // Hiển thị thông báo thành công
-      alert("Đã lưu thành công!");
+      console.log("Đã lưu thành công!");
     } catch (error) {
       console.error("Error saving slides:", error);
       alert("Có lỗi xảy ra khi lưu slides!");
@@ -587,13 +670,16 @@ const SlideManage = () => {
             sidebarOpen={sidebarOpen}
             setSidebarOpen={setSidebarOpen}
             lectureTitle={lectureTitle}
-            setLectureTitle={setLectureTitle}
+            setLectureTitle={(newTitle) => {
+              setLectureTitle(newTitle);
+              updateSlideTitle(newTitle);
+            }}
             duplicateSlide={duplicateSlide}
             deleteSlide={deleteSlide}
             resetContent={resetContent}
             currentSlide={currentSlide}
             slides={slides}
-            getCurrentSlideContent={getCurrentSlideContent}
+            updateSlideRole={updateSlideRole}
             thumbnailsVisible={thumbnailsVisible}
           />
         )}
