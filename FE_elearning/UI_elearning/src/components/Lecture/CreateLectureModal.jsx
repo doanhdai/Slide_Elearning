@@ -72,14 +72,14 @@ const CreateLectureModal = ({ isOpen, onClose, onSubmit, isSubmitting }) => {
               </div>
               <div>
                 <label
-                  htmlFor="class"
+                  htmlFor="studyClass"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
                   Lớp
                 </label>
                 <select
-                  id="class"
-                  name="class"
+                  id="studyClass"
+                  name="studyClass"
                   required
                   value={formData.studyClass}
                   onChange={handleInputChange}

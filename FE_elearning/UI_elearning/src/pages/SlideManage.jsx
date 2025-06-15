@@ -135,11 +135,10 @@ const SlideManage = () => {
   // Optimized slide selection
   const selectSlide = useCallback(
     (slideId) => {
-      if (slideId === currentSlideIdRef.current) return; // Prevent unnecessary updates
+      if (slideId === currentSlideIdRef.current) return; 
 
       setCurrentSlideId(slideId);
 
-      // Update lecture title only if it's different
       const selectedSlide = slidesRef.current.find(
         (slide) => slide.id === slideId
       );
@@ -150,7 +149,6 @@ const SlideManage = () => {
     [lectureTitle]
   );
 
-  // Optimized navigation functions
   const goToNextSlide = useCallback(() => {
     const currentIndex = slidesRef.current.findIndex(
       (slide) => slide.id === currentSlideIdRef.current
@@ -174,7 +172,17 @@ const SlideManage = () => {
     const getAllSlides = async () => {
       try {
         const data = await getSlideById(id);
-        const slideData = data.data.data;
+        let slideData = data.data.data;
+
+        // Nếu là view, chỉ lấy slide role 2 hoặc 3
+        if (mode === "view") {
+          slideData = slideData.filter(
+            (slide) =>
+              slide.roleId === 2 ||
+              slide.roleId === 3 ||
+              (slide.role && (slide.role.id === 2 || slide.role.id === 3))
+          );
+        }
 
         const sortedSlides = slideData.sort(
           (a, b) => a.slideOrder - b.slideOrder
@@ -199,7 +207,7 @@ const SlideManage = () => {
       }
     };
     getAllSlides();
-  }, [id]);
+  }, [id, mode]);
 
   // Optimized content getters
   const getCurrentSlideContent = useCallback(() => {
@@ -467,7 +475,7 @@ const SlideManage = () => {
     return rendered;
   }, [slides]);
 
-  // Memoize thumbnail components
+  // Memoize thumbnail components with better scaling
   const thumbnailComponents = useMemo(() => {
     return slides.map((slide, index) => (
       <Draggable key={slide.id} draggableId={slide.id.toString()} index={index}>
@@ -477,7 +485,7 @@ const SlideManage = () => {
             {...provided.draggableProps}
             {...provided.dragHandleProps}
             onClick={() => selectSlide(slide.id)}
-            className={`relative flex-shrink-0 w-32 h-18 rounded-md border-2 cursor-grab active:cursor-grabbing transition-all duration-200 hover:scale-105 select-none ${
+            className={`relative flex-shrink-0 w-42 h-24 rounded-lg border-2 cursor-grab active:cursor-grabbing transition-all duration-200 hover:scale-105 select-none ${
               slide.id === currentSlideId
                 ? "border-purple-500 shadow-lg shadow-purple-200"
                 : "border-gray-300 hover:border-gray-400 shadow-sm"
@@ -488,24 +496,38 @@ const SlideManage = () => {
               WebkitUserSelect: "none",
               MozUserSelect: "none",
               msUserSelect: "none",
+              ...(snapshot.isDragging && {
+                zIndex: 9999,
+              }),
             }}
           >
-            <div className="w-full h-full bg-white rounded-md overflow-hidden relative pointer-events-none">
+            <div
+              className={`w-full h-full bg-white rounded-lg overflow-hidden relative ${
+                snapshot.isDragging ? "" : "pointer-events-none"
+              }`}
+            >
               {slide.content ? (
                 <div
-                  className="w-full h-full scale-[0.25] origin-top-left overflow-hidden bg-white"
+                  className="w-[90%] h-full overflow-hidden bg-white"
                   style={{
-                    width: "400%",
-                    height: "400%",
+                    transform: "scale(0.15, 0.15)",
+                    transformOrigin: "top left",
+                    width: "667%",
+                    height: "100vh",
                   }}
                 >
-                  {renderedSlides[slide.id]}
+                  <IframeSlideRenderer
+                    htmlContent={slide.content}
+                    slideId={slide.id}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                    }}
+                  />
                 </div>
               ) : (
                 <div className="flex items-center justify-center h-full text-gray-400">
-                  <span className="text-xs font-medium">
-                    Slide {slide.slideOrder || slide.id}
-                  </span>
+                  <span className="text-xs font-medium">Slide {index + 1}</span>
                 </div>
               )}
             </div>
@@ -520,7 +542,7 @@ const SlideManage = () => {
         )}
       </Draggable>
     ));
-  }, [slides, currentSlideId, selectSlide, renderedSlides]);
+  }, [slides, currentSlideId, selectSlide]);
 
   return (
     <div className="h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex flex-col overflow-hidden">
@@ -651,7 +673,7 @@ const SlideManage = () => {
           <div
             className={`w-full flex-shrink-0 transition-all duration-300 ${
               thumbnailsVisible
-                ? "opacity-100 max-h-40"
+                ? "opacity-100 max-h-48"
                 : "opacity-0 max-h-0 overflow-hidden"
             }`}
           >
@@ -670,7 +692,7 @@ const SlideManage = () => {
                         {mode === "edit" && (
                           <button
                             onClick={addNewSlide}
-                            className="flex-shrink-0 w-32 h-18 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center hover:border-purple-400 hover:bg-purple-50 transition-all duration-200 group"
+                            className="flex-shrink-0 w-40 h-24 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center hover:border-purple-400 hover:bg-purple-50 transition-all duration-200 group"
                           >
                             <Plus className="w-6 h-6 text-gray-400 group-hover:text-purple-500 transition-colors" />
                           </button>

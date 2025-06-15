@@ -7,6 +7,8 @@ import { MdOutlineReport } from "react-icons/md";
 import { useNavigate } from "react-router-dom";
 import { deleteLecture, updateLecture } from "../../services/lectureService";
 import EditLectureModal from "./EditLectureModal";
+import DeleteConfirmModal from "../Modal/DeleteConfirmModal";
+import Notification from "../Notification/Notification";
 
 const LectureTable = ({ lectures, onRefresh }) => {
   const navigate = useNavigate();
@@ -18,6 +20,15 @@ const LectureTable = ({ lectures, onRefresh }) => {
   const [editModalState, setEditModalState] = useState({
     isOpen: false,
     lecture: null,
+  });
+  const [deleteModalState, setDeleteModalState] = useState({
+    isOpen: false,
+    lecture: null,
+  });
+  const [notification, setNotification] = useState({
+    show: false,
+    message: "",
+    type: "success",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -50,11 +61,29 @@ const LectureTable = ({ lectures, onRefresh }) => {
 
   const handleDelete = async () => {
     try {
-      await deleteLecture(modalState.lecture.id);
-      onRefresh();
-      handleCloseModal();
+      const response = await deleteLecture(deleteModalState.lecture.id);
+      if (response.status === 200) {
+        setNotification({
+          show: true,
+          message: "Xóa bài giảng thành công!",
+          type: "success",
+        });
+        onRefresh();
+        setDeleteModalState({ isOpen: false, lecture: null });
+      } else {
+        setNotification({
+          show: true,
+          message: "Có lỗi xảy ra khi xóa bài giảng!",
+          type: "error",
+        });
+      }
     } catch (error) {
       console.error("Error deleting lecture:", error);
+      setNotification({
+        show: true,
+        message: "Có lỗi xảy ra khi xóa bài giảng!",
+        type: "error",
+      });
     }
   };
 
@@ -66,11 +95,29 @@ const LectureTable = ({ lectures, onRefresh }) => {
   const handleEditSubmit = async (formData) => {
     setIsSubmitting(true);
     try {
-      await updateLecture(editModalState.lecture.id, formData);
-      setEditModalState({ isOpen: false, lecture: null });
-      onRefresh();
+      const response = await updateLecture(editModalState.lecture.id, formData);
+      if (response.status === 200) {
+        setNotification({
+          show: true,
+          message: "Cập nhật bài giảng thành công!",
+          type: "success",
+        });
+        setEditModalState({ isOpen: false, lecture: null });
+        onRefresh();
+      } else {
+        setNotification({
+          show: true,
+          message: "Có lỗi xảy ra khi cập nhật bài giảng!",
+          type: "error",
+        });
+      }
     } catch (error) {
       console.error("Error updating lecture:", error);
+      setNotification({
+        show: true,
+        message: "Có lỗi xảy ra khi cập nhật bài giảng!",
+        type: "error",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -161,7 +208,13 @@ const LectureTable = ({ lectures, onRefresh }) => {
                   </button>
                 )}
                 <button
-                  onClick={handleDelete}
+                  onClick={() => {
+                    setDeleteModalState({
+                      isOpen: true,
+                      lecture: modalState.lecture,
+                    });
+                    handleCloseModal();
+                  }}
                   className="w-full text-left flex items-center px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-md"
                 >
                   <AiOutlineDelete />
@@ -169,7 +222,7 @@ const LectureTable = ({ lectures, onRefresh }) => {
                 </button>
                 <button
                   onClick={handleReport}
-                  className="w-full text-left  flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+                  className="w-full text-left flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
                 >
                   <MdOutlineReport />
                   Báo cáo
@@ -188,6 +241,24 @@ const LectureTable = ({ lectures, onRefresh }) => {
         onSubmit={handleEditSubmit}
         isSubmitting={isSubmitting}
       />
+
+      {/* Delete Confirm Modal */}
+      <DeleteConfirmModal
+        isOpen={deleteModalState.isOpen}
+        onClose={() => setDeleteModalState({ isOpen: false, lecture: null })}
+        onConfirm={handleDelete}
+        title="Xác Nhận Xóa Bài Giảng"
+        message="Bạn có chắc chắn muốn xóa bài giảng này? Hành động này không thể hoàn tác."
+      />
+
+      {/* Notification */}
+      {notification.show && (
+        <Notification
+          message={notification.message}
+          type={notification.type}
+          onClose={() => setNotification({ ...notification, show: false })}
+        />
+      )}
     </div>
   );
 };

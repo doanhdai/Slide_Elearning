@@ -7,9 +7,9 @@ import { useNavigate } from "react-router-dom";
 const getStatusColor = (status) => {
   switch (status) {
     case "Created":
-      return "text-blue-600 bg-blue-50";
+      return "text-[#05c3fb] bg-[#e6f9ff]";
     case "New":
-      return "text-[#1abe17] bg-red-50";
+      return "text-[#1abe17] bg-[#1abe171a]";
     case "Creating":
       return "text-[#1abe17] bg-green-50";
     default:
@@ -85,14 +85,14 @@ const LectureRow = ({ lecture, onOpenModal, onOpenEditModal }) => {
               <div
                 onClick={() => navigate(`/slides/${lecture.id}?mode=view`)}
                 target="_blank"
-                className="text-indigo-600 hover:text-indigo-900 hover:underline"
+                className="text-indigo-600 hover:text-indigo-900 hover:underline cursor-pointer"
               >
                 Xem bài giảng
               </div>
               {showCopyButton && (
                 <button
                   onClick={handleCopyLink}
-                  className="absolute right-0 bottom-full mb-1 p-2 bg-white border border-gray-200 rounded shadow-sm hover:bg-gray-50"
+                  className="absolute right-0 cursor-pointer bottom-full mb-1 p-2 bg-white border border-gray-200 rounded shadow-sm hover:bg-gray-50"
                   title="Copy link"
                 >
                   <Copy className="w-3 h-3 text-gray-600" />
@@ -106,7 +106,7 @@ const LectureRow = ({ lecture, onOpenModal, onOpenEditModal }) => {
       </td>
       <td className="px-6 py-4">
         <span
-          className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
+          className={`inline-flex px-2 py-1 text-xs badge font-bold rounded-full ${getStatusColor(
             lecture.status
           )}`}
         >
