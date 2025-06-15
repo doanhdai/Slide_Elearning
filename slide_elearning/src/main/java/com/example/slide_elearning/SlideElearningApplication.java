@@ -8,7 +8,7 @@ public class SlideElearningApplication {
 
 	public static void main(String[] args) {
 		SpringApplication.run(SlideElearningApplication.class, args);
-		System.out.println("Đã Chạy thành công kkkkk");
+		System.out.println("Da Chay thanh cong kkkkk");
 	}
 
 }
